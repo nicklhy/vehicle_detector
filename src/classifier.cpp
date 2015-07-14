@@ -1,5 +1,8 @@
 #include "classifier.h"
 
+// #include <iostream>
+// #include <time.h>
+
 
 Classifier::Classifier()
 {}
@@ -17,11 +20,12 @@ void Classifier::init(const string& model_def,
         const string& mean_file,
         const string& label_file,
         const int &gpu_id) {
-#ifdef CPU_ONLY
-    Caffe::set_mode(Caffe::CPU);
-#else
-    Caffe::set_mode(Caffe::GPU);
-#endif
+    if(gpu_id>=0) {
+        Caffe::set_mode(Caffe::GPU);
+        Caffe::SetDevice(gpu_id);
+    }
+    else
+        Caffe::set_mode(Caffe::CPU);
 
     /* Load the network. */
     net_.reset(new Net<float>(model_def, TEST));
@@ -37,7 +41,11 @@ void Classifier::init(const string& model_def,
     input_geometry_ = cv::Size(input_layer->width(), input_layer->height());
 
     /* Load the binaryproto mean file. */
-    if(mean_file!="") SetMean(mean_file);
+    if(mean_file!="")
+        SetMean(mean_file);
+    else {
+        mean_ = cv::Mat::zeros(input_geometry_, CV_MAKE_TYPE(CV_32F, num_channels_));
+    }
 
     /* Load labels. */
     Blob<float>* output_layer = net_->output_blobs()[0];
@@ -54,7 +62,7 @@ void Classifier::init(const string& model_def,
     else {
         for (int i = 0; i < output_layer->channels(); ++i) {
             stringstream ss;
-            ss << i+1;
+            ss << i;
             labels_.push_back(ss.str());
         }
     }
@@ -79,14 +87,15 @@ static std::vector<int> Argmax(const std::vector<float>& v, int N) {
 }
 
 /* Return the top N predictions. */
-std::vector<Prediction> Classifier::classify(const cv::Mat& img, int N) {
+std::vector<Prediction> Classifier::classify(const cv::Mat& img, int N, double threshold) {
     std::vector<float> output = Predict(img);
 
     std::vector<int> maxN = Argmax(output, N);
     std::vector<Prediction> predictions;
     for (int i = 0; i < N; ++i) {
         int idx = maxN[i];
-        predictions.push_back(std::make_pair(labels_[idx], output[idx]));
+        if(output[idx]>threshold)
+            predictions.push_back(std::make_pair(labels_[idx], output[idx]));
     }
 
     return predictions;
@@ -124,6 +133,7 @@ void Classifier::SetMean(const string& mean_file) {
 }
 
 std::vector<float> Classifier::Predict(const cv::Mat& img) {
+    // clock_t t1 = clock();
     Blob<float>* input_layer = net_->input_blobs()[0];
     input_layer->Reshape(1, num_channels_,
             input_geometry_.height, input_geometry_.width);
@@ -134,8 +144,11 @@ std::vector<float> Classifier::Predict(const cv::Mat& img) {
     WrapInputLayer(&input_channels);
 
     Preprocess(img, &input_channels);
+    // clock_t t2 = clock();
 
     net_->ForwardPrefilled();
+    // clock_t t3 = clock();
+    // std::cout << "(" << (t2-t1)*1.0/CLOCKS_PER_SEC << ")" << "(" << (t3-t2)*1.0/CLOCKS_PER_SEC << ")" << std::endl;
 
     /* Copy the output layer to a std::vector */
     Blob<float>* output_layer = net_->output_blobs()[0];
@@ -177,11 +190,13 @@ void Classifier::Preprocess(const cv::Mat& img,
     else
         sample = img;
 
+    // clock_t t1 = clock();
     cv::Mat sample_resized;
     if (sample.size() != input_geometry_)
         cv::resize(sample, sample_resized, input_geometry_);
     else
         sample_resized = sample;
+    // clock_t t2 = clock();
 
     cv::Mat sample_float;
     if (num_channels_ == 3)
@@ -200,4 +215,7 @@ void Classifier::Preprocess(const cv::Mat& img,
     CHECK(reinterpret_cast<float*>(input_channels->at(0).data)
             == net_->input_blobs()[0]->cpu_data())
         << "Input channels are not wrapping the input layer of the network.";
+
+    // clock_t t3 = clock();
+    // std::cout << "(" << (t2-t1)*1.0/CLOCKS_PER_SEC << ")" << "(" << (t3-t2)*1.0/CLOCKS_PER_SEC << ")" << std::endl;
 }

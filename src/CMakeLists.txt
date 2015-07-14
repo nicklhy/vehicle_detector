@@ -14,9 +14,11 @@ set(SRC_LIST main.cpp
     classifier.cpp)
 
 add_executable(app ${SRC_LIST})
+SET_TARGET_PROPERTIES(app PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 
 target_link_libraries(app ${OpenCV_LIBS}
     caffe
+    boost_program_options
     hdf5
     hdf5_hl
     protobuf

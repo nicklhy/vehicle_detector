@@ -34,7 +34,7 @@ class Classifier {
                 const string& label_file = "",
                 const int &gpu_id = 0);
 
-        std::vector<Prediction> classify(const cv::Mat& img, int N = 5);
+        std::vector<Prediction> classify(const cv::Mat& img, int N = 5, double threshold = 0);
 
     private:
         void SetMean(const string& mean_file);
