@@ -1,0 +1,11 @@
+./build
+./data/*
+./cache/*
+./third-parties
+*.caffemodel
+*.pkl
+*.solverstate
+*.model
+*.png
+*.jpg
+*.pyc
