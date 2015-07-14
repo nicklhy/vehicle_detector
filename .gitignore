@@ -1,7 +1,7 @@
-./build
-./data/*
-./cache/*
-./third-parties
+build/*
+data/*
+cache/*
+third-parties/*
 *.caffemodel
 *.pkl
 *.solverstate
