@@ -33,8 +33,8 @@ class Classifier {
                 const string& mean_file = "",
                 const string& label_file = "",
                 const int &gpu_id = 0);
-
         std::vector<Prediction> classify(const cv::Mat& img, int N = 5, double threshold = 0);
+        bool isReady() {return this->is_ready;}
 
     private:
         void SetMean(const string& mean_file);
@@ -53,6 +53,7 @@ class Classifier {
         int num_channels_;
         cv::Mat mean_;
         std::vector<string> labels_;
+        bool is_ready;
 };
 
 #endif

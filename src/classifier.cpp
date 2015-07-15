@@ -5,13 +5,16 @@
 
 
 Classifier::Classifier()
-{}
+{
+    is_ready = false;
+}
 
 Classifier::Classifier(const string& model_def,
         const string& trained_weights,
         const string& mean_file,
         const string& label_file,
         const int &gpu_id) {
+    is_ready = false;
     this->init(model_def, trained_weights, mean_file, label_file, gpu_id);
 }
 
@@ -66,6 +69,7 @@ void Classifier::init(const string& model_def,
             labels_.push_back(ss.str());
         }
     }
+    is_ready = true;
 }
 
 static bool PairCompare(const std::pair<float, int>& lhs,
