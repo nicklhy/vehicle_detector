@@ -16,10 +16,10 @@ link_directories(${PROJECT_SOURCE_DIR}/third-parties/caffe/build/lib
 set(SRC_LIST main.cpp
     classifier.cpp)
 
-add_executable(app ${SRC_LIST})
-SET_TARGET_PROPERTIES(app PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
+add_executable(cmd_classifier ${SRC_LIST})
+SET_TARGET_PROPERTIES(cmd_classifier PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 
-target_link_libraries(app ${OpenCV_LIBS}
+target_link_libraries(cmd_classifier ${OpenCV_LIBS}
     caffe
     boost_program_options
     hdf5
