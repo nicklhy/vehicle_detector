@@ -1,23 +1,40 @@
 #include "vehicle_detector_window.h"
+#include <time.h>
+#include <QMessageBox>
+#include <QPixmap>
 #include <QStringList>
+#include <QStringListModel>
+#include <QDir>
+#include <QModelIndex>
 #include <QString>
 #include <QDialog>
 #include <QFileDialog>
 
-VehicleDetectorWindow::VehicleDetectorWindow(QWidget *parent) : QWidget(parent) {
+VehicleDetectorWindow::VehicleDetectorWindow(QWidget *parent) : QWidget(parent), show_list(this), default_dir(QDir::homePath()) {
     this->setupUi(this);
 
+    this->scene = new QGraphicsScene(this->gvImage);
+    this->gvImage->setScene(this->scene);
+
     isReady = false;
+    leGPU->setReadOnly(false);
+
     this->pbOpen->setDisabled(true);
     this->pbRun->setDisabled(true);
+
+    this->lvFileList->setEditTriggers(QAbstractItemView::NoEditTriggers);
+
+    connect(this->lvFileList, SIGNAL(doubleClicked(QModelIndex)), this, SLOT(show_image(QModelIndex)));
 }
 
 VehicleDetectorWindow::~VehicleDetectorWindow() {
+    if(scene) delete scene;
 }
 
 void VehicleDetectorWindow::release() {
     clf_map.clear();
     isReady = false;
+    leGPU->setReadOnly(false);
     this->pbOpen->setDisabled(true);
     this->pbRun->setDisabled(true);
     tbResult->append("Release all classifiers!");
@@ -38,25 +55,82 @@ bool VehicleDetectorWindow::init(std::map<std::string, ClfParameter> params) {
 
 void VehicleDetectorWindow::on_pbOpen_clicked() {
     assert(isReady);
-    QStringList files = QFileDialog::getOpenFileNames(this,
+    image_list = QFileDialog::getOpenFileNames(this,
             "Select vehicle images",
-            "~",
+            default_dir,
             "Images (*.png *.jpg)");
-    for(int i=0; i<files.size(); ++i) {
-        QString file_path = files.at(i);
+    QStringList file_names;
+    for(int i=0; i<image_list.size(); ++i) {
+        QString file_path = image_list.at(i);
+        QStringList path_parts = file_path.split(QDir::separator());
+        file_names.append(path_parts.at(path_parts.size()-1));
+        path_parts.removeAt(path_parts.size()-1);
+        default_dir = path_parts.join(QDir::separator());
     }
+    show_list.setStringList(file_names);
+    lvFileList->setModel(&show_list);
+    tbResult->append(QString("%1 images loaded").arg(image_list.size()));
+    this->pbRun->setEnabled(true);
 }
 
 void VehicleDetectorWindow::on_pbRun_clicked() {
     assert(isReady);
+
+    QModelIndex index = lvFileList->currentIndex();
+    /* update image */
+    this->show_image(index);
+
+    if(index.row()<0) {
+        QMessageBox::warning(this, "Warning", "Please select an image to first!");
+        return;
+    }
+    // tbResult->append(QString("%1: %2").arg(index.row()).arg(image_list.at(index.row())));
+
+    cv::Mat im = cv::imread(image_list.at(index.row()).toStdString());
+    if(im.empty()) {
+        tbResult->append("Open image error!");
+        return;
+    }
+
+    tbResult->append("*********** Result ***********");
+    bool show_spliter = false;
+    if(this->cbMake->isChecked() && this->clf_map.count("make")) {
+        clock_t t1 = clock();
+        std::vector<Prediction> predictions = this->clf_map["make"].classify(im, 5, 0.1);
+        clock_t t2 = clock();
+        tbResult->append(QString("Make level(%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
+        for (size_t i = 0; i < predictions.size(); ++i) {
+            Prediction &p = predictions[i];
+            tbResult->append(QString("\t%1 ( score: %2 )").arg(p.first.c_str()).arg(p.second));
+        }
+        show_spliter = true;
+    }
+    if(this->cbModel->isChecked() && this->clf_map.count("model")) {
+        if(show_spliter)
+            tbResult->append("------------------------------");
+        clock_t t1 = clock();
+        std::vector<Prediction> predictions = this->clf_map["model"].classify(im, 5, 0.1);
+        clock_t t2 = clock();
+        tbResult->append(QString("Model level(%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
+        for (size_t i = 0; i < predictions.size(); ++i) {
+            Prediction &p = predictions[i];
+            tbResult->append(QString("\t%1 ( score: %2 )").arg(p.first.c_str()).arg(p.second));
+        }
+        show_spliter = true;
+    }
+    tbResult->append("******************************");
 }
 
 void VehicleDetectorWindow::on_pbInit_clicked() {
+    tbResult->append(QString("current path: %1").arg(QDir::currentPath()));
     if(!this->isReady) {
         try {
             int gpu_id = this->leGPU->displayText().toInt();
             assert(gpu_id>=0);
-            std::string models_dir = "/home/lhy/Documents/Codes/CV/projects/vehicle_detector/models";
+
+            QString current_dir = QDir::currentPath();
+            std::string models_dir = current_dir.replace(current_dir.length()-3, 3, "models").toStdString();
+            // tbResult->append(models_dir.c_str());
             std::map<std::string, ClfParameter> params;
 
             params["make"] = ClfParameter(models_dir+"/make/deploy.prototxt",
@@ -64,7 +138,7 @@ void VehicleDetectorWindow::on_pbInit_clicked() {
                     "",
                     models_dir+"/make/make_labels.txt",
                     gpu_id);
-            params["make"] = ClfParameter(models_dir+"/model/deploy.prototxt",
+            params["model"] = ClfParameter(models_dir+"/model/deploy.prototxt",
                     models_dir+"/model/model.caffemodel",
                     "",
                     models_dir+"/model/model_labels.txt",
@@ -72,17 +146,27 @@ void VehicleDetectorWindow::on_pbInit_clicked() {
             init(params);
 
             this->pbOpen->setEnabled(true);
-            this->pbRun->setEnabled(true);
+            // this->pbRun->setEnabled(true);
+
+            leGPU->setReadOnly(true);
             isReady = true;
         }
         catch (...) {
             isReady = false;
+            leGPU->setReadOnly(false);
             tbResult->append("Initialization failed!");
         }
     }
     else {
         release();
         isReady = false;
+        leGPU->setReadOnly(false);
         tbResult->append("All Classifiers released.");
     }
+}
+
+void VehicleDetectorWindow::show_image(const QModelIndex &index) {
+    /* delete all previous images */
+    this->scene->clear();
+    this->scene->addPixmap(QPixmap(this->image_list.at(index.row())));
 }

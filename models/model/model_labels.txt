@@ -1704,13 +1704,3 @@ Zxauto C3
 GreenWheel
 Grandtiger SUV
 Qijian A9
-Carlsson C
-CarlssonCS
-CarlssonCK
-CarlssonCML
-CarlssonCGL
-Shouwang
-Noble M600
-Noble M14
-Noble M15
-Noble M12

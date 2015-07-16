@@ -3,6 +3,9 @@
 
 #include <map>
 #include <string>
+#include <QGraphicsScene>
+#include <QStringList>
+#include <QStringListModel>
 #include <QWidget>
 #include "ui_mainwindow.h"
 #include "classifier.h"
@@ -42,12 +45,17 @@ class VehicleDetectorWindow : public QWidget, public Ui::DetectorWindow {
         /* data */
         /* indicate if caffe is ready */
         bool isReady;
+        QString default_dir;
         std::map<std::string, Classifier> clf_map;
+        QStringList image_list;
+        QStringListModel show_list;
+        QGraphicsScene *scene;
 
-        private slots:
-            void on_pbOpen_clicked();
+    private slots:
+        void on_pbOpen_clicked();
         void on_pbRun_clicked();
         void on_pbInit_clicked();
+        void show_image(const QModelIndex &index);
 };
 
 #endif
