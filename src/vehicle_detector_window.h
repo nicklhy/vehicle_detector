@@ -2,7 +2,10 @@
 #define __VEHICLE_DETECTOR_WINDOW_H__
 
 #include <map>
+#include <vector>
 #include <string>
+#include <opencv2/opencv.hpp>
+#include <QStandardItemModel>
 #include <QGraphicsScene>
 #include <QStringList>
 #include <QStringListModel>
@@ -43,12 +46,14 @@ class VehicleDetectorWindow : public QWidget, public Ui::DetectorWindow {
         void release();
 
         /* data */
-        /* indicate if caffe is ready */
+        int rank_num;
         bool isReady;
         QString default_dir;
         std::map<std::string, Classifier> clf_map;
+        std::vector<cv::Rect> rects;
         QStringList image_list;
         QStringListModel show_list;
+        QStandardItemModel tv_item_model;
         QGraphicsScene *scene;
 
     private slots:

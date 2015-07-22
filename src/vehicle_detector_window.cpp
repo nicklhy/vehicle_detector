@@ -1,5 +1,6 @@
 #include "vehicle_detector_window.h"
 #include <time.h>
+#include <QFont>
 #include <QMessageBox>
 #include <QPixmap>
 #include <QStringList>
@@ -16,19 +17,39 @@ VehicleDetectorWindow::VehicleDetectorWindow(QWidget *parent) : QWidget(parent),
     this->scene = new QGraphicsScene(this->gvImage);
     this->gvImage->setScene(this->scene);
 
-    isReady = false;
-    leGPU->setReadOnly(false);
+    this->rank_num = 5;
+    this->isReady = false;
+    this->leGPU->setReadOnly(false);
 
     this->pbOpen->setDisabled(true);
     this->pbRun->setDisabled(true);
 
     this->lvFileList->setEditTriggers(QAbstractItemView::NoEditTriggers);
 
+
+    QFont font = this->font();
+    font.setPointSize(15);
+    this->setFont(font);
+    this->tv_item_model.setColumnCount(5);
+    this->tv_item_model.setRowCount(rank_num);
+    // this->tv_item_model.setHeaderData(0, Qt::Horizontal, "Rank");
+    this->tv_item_model.setHeaderData(0, Qt::Horizontal, "Type");
+    this->tv_item_model.setHeaderData(1, Qt::Horizontal, "Color");
+    this->tv_item_model.setHeaderData(2, Qt::Horizontal, "Make");
+    this->tv_item_model.setHeaderData(3, Qt::Horizontal, "Model");
+    this->tv_item_model.setHeaderData(4, Qt::Horizontal, "Plate");
+    for(int i=1; i<=rank_num; ++i)
+        this->tv_item_model.setHeaderData(i-1, Qt::Vertical, QString("%1").arg(i));
+    tvResult->setModel(&tv_item_model);
+    // tvResult->resizeRowsToContents();
+    tvResult->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+
     connect(this->lvFileList, SIGNAL(doubleClicked(QModelIndex)), this, SLOT(show_image(QModelIndex)));
 }
 
 VehicleDetectorWindow::~VehicleDetectorWindow() {
     if(scene) delete scene;
+    release();
 }
 
 void VehicleDetectorWindow::release() {
@@ -37,7 +58,7 @@ void VehicleDetectorWindow::release() {
     leGPU->setReadOnly(false);
     this->pbOpen->setDisabled(true);
     this->pbRun->setDisabled(true);
-    tbResult->append("Release all classifiers!");
+    tbStatus->append("Release all classifiers!");
 }
 
 bool VehicleDetectorWindow::init(std::map<std::string, ClfParameter> params) {
@@ -48,7 +69,7 @@ bool VehicleDetectorWindow::init(std::map<std::string, ClfParameter> params) {
                 iter->second.mean_file,
                 iter->second.label_file,
                 iter->second.gpu_id);
-        this->tbResult->append(QString(iter->first.c_str())+QString(" model loaded"));
+        this->tbStatus->append(QString(iter->first.c_str())+QString(" model loaded"));
     }
     return true;
 }
@@ -69,7 +90,7 @@ void VehicleDetectorWindow::on_pbOpen_clicked() {
     }
     show_list.setStringList(file_names);
     lvFileList->setModel(&show_list);
-    tbResult->append(QString("%1 images loaded").arg(image_list.size()));
+    tbStatus->append(QString("%1 images loaded").arg(image_list.size()));
     this->pbRun->setEnabled(true);
 }
 
@@ -84,45 +105,58 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
         QMessageBox::warning(this, "Warning", "Please select an image to first!");
         return;
     }
-    // tbResult->append(QString("%1: %2").arg(index.row()).arg(image_list.at(index.row())));
+    // tbStatus->append(QString("%1: %2").arg(index.row()).arg(image_list.at(index.row())));
 
     cv::Mat im = cv::imread(image_list.at(index.row()).toStdString());
     if(im.empty()) {
-        tbResult->append("Open image error!");
+        tbStatus->append("Open image error!");
         return;
     }
 
-    tbResult->append("*********** Result ***********");
+    tbStatus->append("*********** Result ***********");
+    rects.clear();
+    /* clear all the previous results */
+    for(int i=0; i<rank_num; ++i) {
+        for(int j=0; j<5; ++j) tv_item_model.setItem(i, j, new QStandardItem(""));
+    }
     bool show_spliter = false;
+    if(this->cbDetection->isChecked() && this->clf_map.count("detection")) {
+        /* detect */
+    }
+    else rects.push_back(cv::Rect(0, 0, im.cols, im.rows));
     if(this->cbMake->isChecked() && this->clf_map.count("make")) {
+        if(show_spliter)
+            tbStatus->append("------------------------------");
         clock_t t1 = clock();
-        std::vector<Prediction> predictions = this->clf_map["make"].classify(im, 5, 0.1);
+        std::vector<Prediction> predictions = this->clf_map["make"].classify(im, rank_num, 0.1);
         clock_t t2 = clock();
-        tbResult->append(QString("Make level(%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
+        tbStatus->append(QString("Make level(%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
         for (size_t i = 0; i < predictions.size(); ++i) {
             Prediction &p = predictions[i];
-            tbResult->append(QString("\t%1 ( score: %2 )").arg(p.first.c_str()).arg(p.second));
+            tbStatus->append(QString("\t%1 ( score: %2 )").arg(p.first.c_str()).arg(p.second));
+            tv_item_model.setItem(i, 2, new QStandardItem(QString("%1 ( %2 )").arg(p.first.c_str()).arg(p.second)));
         }
         show_spliter = true;
     }
     if(this->cbModel->isChecked() && this->clf_map.count("model")) {
         if(show_spliter)
-            tbResult->append("------------------------------");
+            tbStatus->append("------------------------------");
         clock_t t1 = clock();
-        std::vector<Prediction> predictions = this->clf_map["model"].classify(im, 5, 0.1);
+        std::vector<Prediction> predictions = this->clf_map["model"].classify(im, rank_num, 0.1);
         clock_t t2 = clock();
-        tbResult->append(QString("Model level(%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
+        tbStatus->append(QString("Model level(%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
         for (size_t i = 0; i < predictions.size(); ++i) {
             Prediction &p = predictions[i];
-            tbResult->append(QString("\t%1 ( score: %2 )").arg(p.first.c_str()).arg(p.second));
+            tbStatus->append(QString("\t%1 ( score: %2 )").arg(p.first.c_str()).arg(p.second));
+            tv_item_model.setItem(i, 3, new QStandardItem(QString("%1 ( %2 )").arg(p.first.c_str()).arg(p.second)));
         }
         show_spliter = true;
     }
-    tbResult->append("******************************");
+    tbStatus->append("******************************");
 }
 
 void VehicleDetectorWindow::on_pbInit_clicked() {
-    tbResult->append(QString("current path: %1").arg(QDir::currentPath()));
+    tbStatus->append(QString("current path: %1").arg(QDir::currentPath()));
     if(!this->isReady) {
         try {
             int gpu_id = this->leGPU->displayText().toInt();
@@ -130,7 +164,7 @@ void VehicleDetectorWindow::on_pbInit_clicked() {
 
             QString current_dir = QDir::currentPath();
             std::string models_dir = current_dir.replace(current_dir.length()-3, 3, "models").toStdString();
-            // tbResult->append(models_dir.c_str());
+            // tbStatus->append(models_dir.c_str());
             std::map<std::string, ClfParameter> params;
 
             params["make"] = ClfParameter(models_dir+"/make/deploy.prototxt",
@@ -154,14 +188,14 @@ void VehicleDetectorWindow::on_pbInit_clicked() {
         catch (...) {
             isReady = false;
             leGPU->setReadOnly(false);
-            tbResult->append("Initialization failed!");
+            tbStatus->append("Initialization failed!");
         }
     }
     else {
         release();
         isReady = false;
         leGPU->setReadOnly(false);
-        tbResult->append("All Classifiers released.");
+        tbStatus->append("All Classifiers released.");
     }
 }
 
