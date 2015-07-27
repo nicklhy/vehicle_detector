@@ -28,10 +28,11 @@ VehicleDetectorWindow::VehicleDetectorWindow(QWidget *parent) : QWidget(parent),
 
 
     QFont font = this->font();
-    font.setPointSize(15);
+    font.setPointSize(12);
     this->setFont(font);
     this->tv_item_model.setColumnCount(5);
     this->tv_item_model.setRowCount(rank_num);
+    this->tvResult->setEditTriggers(QAbstractItemView::NoEditTriggers);
     // this->tv_item_model.setHeaderData(0, Qt::Horizontal, "Rank");
     this->tv_item_model.setHeaderData(0, Qt::Horizontal, "Type");
     this->tv_item_model.setHeaderData(1, Qt::Horizontal, "Color");
@@ -43,6 +44,7 @@ VehicleDetectorWindow::VehicleDetectorWindow(QWidget *parent) : QWidget(parent),
     tvResult->setModel(&tv_item_model);
     // tvResult->resizeRowsToContents();
     tvResult->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    tvResult->verticalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
     connect(this->lvFileList, SIGNAL(doubleClicked(QModelIndex)), this, SLOT(show_image(QModelIndex)));
 }
@@ -124,6 +126,20 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
         /* detect */
     }
     else rects.push_back(cv::Rect(0, 0, im.cols, im.rows));
+    if(this->cbType->isChecked() && this->clf_map.count("type")) {
+        if(show_spliter)
+            tbStatus->append("------------------------------");
+        clock_t t1 = clock();
+        std::vector<Prediction> predictions = this->clf_map["type"].classify(im, rank_num, 0.1);
+        clock_t t2 = clock();
+        tbStatus->append(QString("Type level(%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
+        for (size_t i = 0; i < predictions.size(); ++i) {
+            Prediction &p = predictions[i];
+            tbStatus->append(QString("\t%1 ( score: %2 )").arg(p.first.c_str()).arg(p.second));
+            tv_item_model.setItem(i, 0, new QStandardItem(QString("%1 ( %2 )").arg(p.first.c_str()).arg(p.second)));
+        }
+        show_spliter = true;
+    }
     if(this->cbMake->isChecked() && this->clf_map.count("make")) {
         if(show_spliter)
             tbStatus->append("------------------------------");
@@ -171,6 +187,11 @@ void VehicleDetectorWindow::on_pbInit_clicked() {
                     models_dir+"/make/make.caffemodel",
                     "",
                     models_dir+"/make/make_labels.txt",
+                    gpu_id);
+            params["type"] = ClfParameter(models_dir+"/type/deploy.prototxt",
+                    models_dir+"/type/type.caffemodel",
+                    "",
+                    models_dir+"/type/type_labels.txt",
                     gpu_id);
             params["model"] = ClfParameter(models_dir+"/model/deploy.prototxt",
                     models_dir+"/model/model.caffemodel",
