@@ -28,7 +28,7 @@ VehicleDetectorWindow::VehicleDetectorWindow(QWidget *parent) : QWidget(parent),
 
 
     QFont font = this->font();
-    font.setPointSize(12);
+    font.setPointSize(18);
     this->setFont(font);
     this->tv_item_model.setColumnCount(5);
     this->tv_item_model.setRowCount(rank_num);
