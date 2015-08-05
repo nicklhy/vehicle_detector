@@ -12,32 +12,32 @@
 #include <vector>
 
 
-using namespace caffe;  // NOLINT(build/namespaces)
-using namespace std;
+// using namespace caffe;  // NOLINT(build/namespaces)
+// using namespace std;
 
 
 /* Pair (label, confidence) representing a prediction. */
-typedef std::pair<string, float> Prediction;
+typedef std::pair<std::string, float> Prediction;
 
 
 class Classifier {
     public:
         Classifier();
-        Classifier(const string& model_def,
-                const string& trained_weights,
-                const string& mean_file = "",
-                const string& label_file = "",
+        Classifier(const std::string& model_def,
+                const std::string& trained_weights,
+                const std::string& mean_file = "",
+                const std::string& label_file = "",
                 const int &gpu_id = 0);
-        void init(const string& model_def,
-                const string& trained_weights,
-                const string& mean_file = "",
-                const string& label_file = "",
+        void init(const std::string& model_def,
+                const std::string& trained_weights,
+                const std::string& mean_file = "",
+                const std::string& label_file = "",
                 const int &gpu_id = 0);
         std::vector<Prediction> classify(const cv::Mat& img, int N = 5, double threshold = 0);
         bool isReady() {return this->is_ready;}
 
     private:
-        void SetMean(const string& mean_file);
+        void SetMean(const std::string& mean_file);
 
         std::vector<float> Predict(const cv::Mat& img);
 
@@ -48,11 +48,11 @@ class Classifier {
 
     private:
         /* data */
-        shared_ptr<Net<float> > net_;
+        std::shared_ptr<caffe::Net<float> > net_;
         cv::Size input_geometry_;
         int num_channels_;
         cv::Mat mean_;
-        std::vector<string> labels_;
+        std::vector<std::string> labels_;
         bool is_ready;
 };
 

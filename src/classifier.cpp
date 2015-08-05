@@ -9,35 +9,35 @@ Classifier::Classifier()
     is_ready = false;
 }
 
-Classifier::Classifier(const string& model_def,
-        const string& trained_weights,
-        const string& mean_file,
-        const string& label_file,
+Classifier::Classifier(const std::string& model_def,
+        const std::string& trained_weights,
+        const std::string& mean_file,
+        const std::string& label_file,
         const int &gpu_id) {
     is_ready = false;
     this->init(model_def, trained_weights, mean_file, label_file, gpu_id);
 }
 
-void Classifier::init(const string& model_def,
-        const string& trained_weights,
-        const string& mean_file,
-        const string& label_file,
+void Classifier::init(const std::string& model_def,
+        const std::string& trained_weights,
+        const std::string& mean_file,
+        const std::string& label_file,
         const int &gpu_id) {
     if(gpu_id>=0) {
-        Caffe::set_mode(Caffe::GPU);
-        Caffe::SetDevice(gpu_id);
+        caffe::Caffe::set_mode(caffe::Caffe::GPU);
+        caffe::Caffe::SetDevice(gpu_id);
     }
     else
-        Caffe::set_mode(Caffe::CPU);
+        caffe::Caffe::set_mode(caffe::Caffe::CPU);
 
     /* Load the network. */
-    net_.reset(new Net<float>(model_def, TEST));
+    net_.reset(new caffe::Net<float>(model_def, caffe::TEST));
     net_->CopyTrainedLayersFrom(trained_weights);
 
     CHECK_EQ(net_->num_inputs(), 1) << "Network should have exactly one input.";
     CHECK_EQ(net_->num_outputs(), 1) << "Network should have exactly one output.";
 
-    Blob<float>* input_layer = net_->input_blobs()[0];
+    caffe::Blob<float>* input_layer = net_->input_blobs()[0];
     num_channels_ = input_layer->channels();
     CHECK(num_channels_ == 3 || num_channels_ == 1)
         << "Input layer should have 1 or 3 channels.";
@@ -51,20 +51,20 @@ void Classifier::init(const string& model_def,
     }
 
     /* Load labels. */
-    Blob<float>* output_layer = net_->output_blobs()[0];
+    caffe::Blob<float>* output_layer = net_->output_blobs()[0];
     if(label_file!="") {
         std::ifstream labels(label_file.c_str());
         CHECK(labels) << "Unable to open labels file " << label_file;
-        string line;
+        std::string line;
         while (std::getline(labels, line))
-            labels_.push_back(string(line));
+            labels_.push_back(std::string(line));
 
         CHECK_EQ(labels_.size(), output_layer->channels())
             << "Number of labels is different from the output layer dimension.";
     }
     else {
         for (int i = 0; i < output_layer->channels(); ++i) {
-            stringstream ss;
+            std::stringstream ss;
             ss << i;
             labels_.push_back(ss.str());
         }
@@ -106,12 +106,12 @@ std::vector<Prediction> Classifier::classify(const cv::Mat& img, int N, double t
 }
 
 /* Load the mean file in binaryproto format. */
-void Classifier::SetMean(const string& mean_file) {
-    BlobProto blob_proto;
+void Classifier::SetMean(const std::string& mean_file) {
+    caffe::BlobProto blob_proto;
     ReadProtoFromBinaryFileOrDie(mean_file.c_str(), &blob_proto);
 
-    /* Convert from BlobProto to Blob<float> */
-    Blob<float> mean_blob;
+    /* Convert from caffe::BlobProto to caffe::Blob<float> */
+    caffe::Blob<float> mean_blob;
     mean_blob.FromProto(blob_proto);
     CHECK_EQ(mean_blob.channels(), num_channels_)
         << "Number of channels of mean file doesn't match input layer.";
@@ -138,7 +138,7 @@ void Classifier::SetMean(const string& mean_file) {
 
 std::vector<float> Classifier::Predict(const cv::Mat& img) {
     // clock_t t1 = clock();
-    Blob<float>* input_layer = net_->input_blobs()[0];
+    caffe::Blob<float>* input_layer = net_->input_blobs()[0];
     input_layer->Reshape(1, num_channels_,
             input_geometry_.height, input_geometry_.width);
     /* Forward dimension change to all layers. */
@@ -155,7 +155,7 @@ std::vector<float> Classifier::Predict(const cv::Mat& img) {
     // std::cout << "(" << (t2-t1)*1.0/CLOCKS_PER_SEC << ")" << "(" << (t3-t2)*1.0/CLOCKS_PER_SEC << ")" << std::endl;
 
     /* Copy the output layer to a std::vector */
-    Blob<float>* output_layer = net_->output_blobs()[0];
+    caffe::Blob<float>* output_layer = net_->output_blobs()[0];
     const float* begin = output_layer->cpu_data();
     const float* end = begin + output_layer->channels();
     return std::vector<float>(begin, end);
@@ -167,7 +167,7 @@ std::vector<float> Classifier::Predict(const cv::Mat& img) {
  * operation will write the separate channels directly to the input
  * layer. */
 void Classifier::WrapInputLayer(std::vector<cv::Mat>* input_channels) {
-    Blob<float>* input_layer = net_->input_blobs()[0];
+    caffe::Blob<float>* input_layer = net_->input_blobs()[0];
 
     int width = input_layer->width();
     int height = input_layer->height();

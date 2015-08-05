@@ -12,6 +12,7 @@
 #include <QWidget>
 #include "ui_mainwindow.h"
 #include "classifier.h"
+#include "easypr.h"
 
 class ClfParameter {
     public:
@@ -55,6 +56,7 @@ class VehicleDetectorWindow : public QWidget, public Ui::DetectorWindow {
         QStringListModel show_list;
         QStandardItemModel tv_item_model;
         QGraphicsScene *scene;
+        easypr::CPlateRecognize plate_recognizer;
 
     private slots:
         void on_pbOpen_clicked();

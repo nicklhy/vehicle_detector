@@ -26,6 +26,14 @@ VehicleDetectorWindow::VehicleDetectorWindow(QWidget *parent) : QWidget(parent),
 
     this->lvFileList->setEditTriggers(QAbstractItemView::NoEditTriggers);
 
+    QString current_dir = QDir::currentPath();
+    std::string pr_models_dir = current_dir.replace(current_dir.length()-3, 3, "third-parties/EasyPR/resources/model").toStdString();
+
+    plate_recognizer.LoadANN(pr_models_dir+"/ann.xml");
+    plate_recognizer.LoadSVM(pr_models_dir+"/svm.xml");
+    plate_recognizer.setLifemode(true);
+    plate_recognizer.setDebug(false);
+
 
     QFont font = this->font();
     font.setPointSize(18);
@@ -103,7 +111,7 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
     /* update image */
     this->show_image(index);
 
-    if(index.row()<0) {
+    if(index.row()<0 || index.row()>=image_list.size()) {
         QMessageBox::warning(this, "Warning", "Please select an image to first!");
         return;
     }
@@ -167,6 +175,23 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
             tv_item_model.setItem(i, 3, new QStandardItem(QString("%1 ( %2 )").arg(p.first.c_str()).arg(p.second)));
         }
         show_spliter = true;
+    }
+    if(this->cbPlate->isChecked()) {
+        for(size_t i=0; i<rects.size(); ++i) {
+            if(show_spliter)
+                tbStatus->append("------------------------------");
+            cv::Rect rect = rects[i];
+            cv::Mat car_img(im, rect);
+
+            std::vector<std::string> license;
+            clock_t t1 = clock();
+            plate_recognizer.plateRecognize(car_img, license);
+            clock_t t2 = clock();
+
+            tv_item_model.setItem(i, 4, new QStandardItem(QString("%1").arg(license.size()>0?QString(license[0].c_str()) : "None")));
+            tbStatus->append(QString("Plate (%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
+            tbStatus->append(license.size()>0?QString(license[0].c_str()) : "None");
+        }
     }
     tbStatus->append("******************************");
 }
