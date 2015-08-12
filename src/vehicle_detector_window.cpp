@@ -140,7 +140,7 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
         int cnt = 0;
         for(size_t i=0; i<dets.size(); ++i) {
             std::pair<float, cv::Rect> &det = dets[i];
-            if(det.second.width<MIN_TAR_WIDTH || det.second.height<MIN_TAR_WIDTH) continue;
+            if(det.second.width*1.0/im.cols<MIN_TAR_SCALE || det.second.height*1.0/im.rows<MIN_TAR_SCALE) continue;
             rects.push_back(det.second);
             QRectF r(det.second.x, det.second.y, det.second.width, det.second.height);
             QGraphicsRectItem *pr = this->scene->addRect(r, pen);
@@ -254,8 +254,8 @@ void VehicleDetectorWindow::on_pbInit_clicked() {
 
             std::string det_def = models_dir+"/detector/deploy.prototxt";
             std::string det_weights = models_dir+"/detector/detector.caffemodel";
-            std::string bing_model = models_dir+"/bing";
-            detector = new FRCNN(det_def.c_str(), det_weights.c_str(), bing_model.c_str(), 0.5, 0.3, 500, 3);
+            std::string bing_model = models_dir+"/bing/ObjNessB2W8MAXBGR";
+            detector = new FRCNN(det_def.c_str(), det_weights.c_str(), bing_model.c_str(), 0.7, 0.3, 500, 3);
             // detector->set_gpu(gpu_id);
             tbStatus->append("detector initialized");
 

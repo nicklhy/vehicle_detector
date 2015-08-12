@@ -15,8 +15,7 @@
 #include "easypr.h"
 #include "fast_rcnn_test.h"
 
-#define MIN_TAR_WIDTH   50
-#define MIN_TAR_HEIGHT  50
+#define MIN_TAR_SCALE   0.1
 
 class ClfParameter {
     public:
