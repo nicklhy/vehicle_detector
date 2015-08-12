@@ -1,7 +1,9 @@
 #include "vehicle_detector_window.h"
 #include <time.h>
 #include <QFont>
+#include <QPen>
 #include <QMessageBox>
+#include <QGraphicsRectItem>
 #include <QPixmap>
 #include <QStringList>
 #include <QStringListModel>
@@ -26,14 +28,8 @@ VehicleDetectorWindow::VehicleDetectorWindow(QWidget *parent) : QWidget(parent),
 
     this->lvFileList->setEditTriggers(QAbstractItemView::NoEditTriggers);
 
-    QString current_dir = QDir::currentPath();
-    std::string pr_models_dir = current_dir.replace(current_dir.length()-3, 3, "third-parties/EasyPR/resources/model").toStdString();
-
-    plate_recognizer.LoadANN(pr_models_dir+"/ann.xml");
-    plate_recognizer.LoadSVM(pr_models_dir+"/svm.xml");
-    plate_recognizer.setLifemode(true);
-    plate_recognizer.setDebug(false);
-
+    detector = NULL;
+    plate_recognizer = NULL;
 
     QFont font = this->font();
     font.setPointSize(18);
@@ -59,6 +55,8 @@ VehicleDetectorWindow::VehicleDetectorWindow(QWidget *parent) : QWidget(parent),
 
 VehicleDetectorWindow::~VehicleDetectorWindow() {
     if(scene) delete scene;
+    if(detector) delete detector;
+    if(plate_recognizer) delete plate_recognizer;
     release();
 }
 
@@ -108,14 +106,15 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
     assert(isReady);
 
     QModelIndex index = lvFileList->currentIndex();
-    /* update image */
-    this->show_image(index);
 
     if(index.row()<0 || index.row()>=image_list.size()) {
-        QMessageBox::warning(this, "Warning", "Please select an image to first!");
+        QMessageBox::warning(this, "Warning", "Please select an image first!");
         return;
     }
     // tbStatus->append(QString("%1: %2").arg(index.row()).arg(image_list.at(index.row())));
+
+    /* update image */
+    this->show_image(index);
 
     cv::Mat im = cv::imread(image_list.at(index.row()).toStdString());
     if(im.empty()) {
@@ -126,66 +125,84 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
     tbStatus->append("*********** Result ***********");
     rects.clear();
     /* clear all the previous results */
-    for(int i=0; i<rank_num; ++i) {
-        for(int j=0; j<5; ++j) tv_item_model.setItem(i, j, new QStandardItem(""));
+    for(int i=0; i<tv_item_model.rowCount(); ++i) {
+        for(int j=0; j<tv_item_model.columnCount(); ++j) tv_item_model.setItem(i, j, new QStandardItem(""));
     }
     bool show_spliter = false;
-    if(this->cbDetection->isChecked() && this->clf_map.count("detection")) {
+    QPen pen;
+    pen.setWidth(3);
+    pen.setColor(QColor(255, 0, 0));
+    QFont font = this->font();
+    font.setPointSize(40);
+    if(this->cbDetection->isChecked() && detector!=NULL) {
         /* detect */
+        std::vector<std::pair<float, cv::Rect> > dets = detector->im_detect(im);
+        int cnt = 0;
+        for(size_t i=0; i<dets.size(); ++i) {
+            std::pair<float, cv::Rect> &det = dets[i];
+            if(det.second.width<MIN_TAR_WIDTH || det.second.height<MIN_TAR_WIDTH) continue;
+            rects.push_back(det.second);
+            QRectF r(det.second.x, det.second.y, det.second.width, det.second.height);
+            QGraphicsRectItem *pr = this->scene->addRect(r, pen);
+            QGraphicsTextItem *pt = this->scene->addText(QString("%1").arg(i+1), font);
+            pt->setDefaultTextColor(QColor(0, 255, 0));
+            pt->setPos(QPointF(det.second.x, det.second.y));
+            cnt++;
+        }
+        tbStatus->append(QString("Find %1 targets").arg(cnt));
     }
     else rects.push_back(cv::Rect(0, 0, im.cols, im.rows));
-    if(this->cbType->isChecked() && this->clf_map.count("type")) {
-        if(show_spliter)
-            tbStatus->append("------------------------------");
-        clock_t t1 = clock();
-        std::vector<Prediction> predictions = this->clf_map["type"].classify(im, rank_num, 0.1);
-        clock_t t2 = clock();
-        tbStatus->append(QString("Type level(%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
-        for (size_t i = 0; i < predictions.size(); ++i) {
-            Prediction &p = predictions[i];
-            tbStatus->append(QString("\t%1 ( score: %2 )").arg(p.first.c_str()).arg(p.second));
-            tv_item_model.setItem(i, 0, new QStandardItem(QString("%1 ( %2 )").arg(p.first.c_str()).arg(p.second)));
-        }
-        show_spliter = true;
-    }
-    if(this->cbMake->isChecked() && this->clf_map.count("make")) {
-        if(show_spliter)
-            tbStatus->append("------------------------------");
-        clock_t t1 = clock();
-        std::vector<Prediction> predictions = this->clf_map["make"].classify(im, rank_num, 0.1);
-        clock_t t2 = clock();
-        tbStatus->append(QString("Make level(%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
-        for (size_t i = 0; i < predictions.size(); ++i) {
-            Prediction &p = predictions[i];
-            tbStatus->append(QString("\t%1 ( score: %2 )").arg(p.first.c_str()).arg(p.second));
-            tv_item_model.setItem(i, 2, new QStandardItem(QString("%1 ( %2 )").arg(p.first.c_str()).arg(p.second)));
-        }
-        show_spliter = true;
-    }
-    if(this->cbModel->isChecked() && this->clf_map.count("model")) {
-        if(show_spliter)
-            tbStatus->append("------------------------------");
-        clock_t t1 = clock();
-        std::vector<Prediction> predictions = this->clf_map["model"].classify(im, rank_num, 0.1);
-        clock_t t2 = clock();
-        tbStatus->append(QString("Model level(%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
-        for (size_t i = 0; i < predictions.size(); ++i) {
-            Prediction &p = predictions[i];
-            tbStatus->append(QString("\t%1 ( score: %2 )").arg(p.first.c_str()).arg(p.second));
-            tv_item_model.setItem(i, 3, new QStandardItem(QString("%1 ( %2 )").arg(p.first.c_str()).arg(p.second)));
-        }
-        show_spliter = true;
-    }
-    if(this->cbPlate->isChecked()) {
-        for(size_t i=0; i<rects.size(); ++i) {
+
+    // scan all detected vehicles
+    for(size_t i=0; i<rects.size(); ++i) {
+        cv::Rect rect = rects[i];
+        cv::Mat car_img(im, rect);
+
+        if(this->cbType->isChecked() && this->clf_map.count("type")) {
             if(show_spliter)
                 tbStatus->append("------------------------------");
-            cv::Rect rect = rects[i];
-            cv::Mat car_img(im, rect);
-
+            clock_t t1 = clock();
+            std::vector<Prediction> predictions = this->clf_map["type"].classify(car_img, rank_num, 0.1);
+            clock_t t2 = clock();
+            tbStatus->append(QString("Type level(%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
+            std::string type_str = predictions.size()>0?predictions[0].first : "None";
+            float s = predictions.size()>0?predictions[0].second : 0;
+            tbStatus->append(QString("\t%1 ( score: %2 )").arg(type_str.c_str()).arg(s));
+            tv_item_model.setItem(i, 0, new QStandardItem(QString("%1").arg(type_str.c_str())));
+            show_spliter = true;
+        }
+        if(this->cbMake->isChecked() && this->clf_map.count("make")) {
+            if(show_spliter)
+                tbStatus->append("------------------------------");
+            clock_t t1 = clock();
+            std::vector<Prediction> predictions = this->clf_map["make"].classify(car_img, rank_num, 0.1);
+            clock_t t2 = clock();
+            tbStatus->append(QString("Make level(%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
+            std::string make_str = predictions.size()>0?predictions[0].first : "None";
+            float s = predictions.size()>0?predictions[0].second : 0;
+            tbStatus->append(QString("\t%1 ( score: %2 )").arg(make_str.c_str()).arg(s));
+            tv_item_model.setItem(i, 2, new QStandardItem(QString("%1").arg(make_str.c_str())));
+            show_spliter = true;
+        }
+        if(this->cbModel->isChecked() && this->clf_map.count("model")) {
+            if(show_spliter)
+                tbStatus->append("------------------------------");
+            clock_t t1 = clock();
+            std::vector<Prediction> predictions = this->clf_map["model"].classify(car_img, rank_num, 0.1);
+            clock_t t2 = clock();
+            tbStatus->append(QString("Model level(%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
+            std::string model_str = predictions.size()>0?predictions[0].first : "None";
+            float s = predictions.size()>0?predictions[0].second : 0;
+            tbStatus->append(QString("\t%1 ( score: %2 )").arg(model_str.c_str()).arg(s));
+            tv_item_model.setItem(i, 3, new QStandardItem(QString("%1").arg(model_str.c_str())));
+            show_spliter = true;
+        }
+        if(this->cbPlate->isChecked()) {
+            if(show_spliter)
+                tbStatus->append("------------------------------");
             std::vector<std::string> license;
             clock_t t1 = clock();
-            plate_recognizer.plateRecognize(car_img, license);
+            plate_recognizer->plateRecognize(car_img, license);
             clock_t t2 = clock();
 
             tv_item_model.setItem(i, 4, new QStandardItem(QString("%1").arg(license.size()>0?QString(license[0].c_str()) : "None")));
@@ -200,11 +217,21 @@ void VehicleDetectorWindow::on_pbInit_clicked() {
     tbStatus->append(QString("current path: %1").arg(QDir::currentPath()));
     if(!this->isReady) {
         try {
+            QString current_dir = QDir::currentPath();
+            QString root_dir = current_dir.left(current_dir.size()-4);
+            std::string pr_models_dir = QString(root_dir+"/third-parties/EasyPR/resources/model").toStdString();
+
+            plate_recognizer = new easypr::CPlateRecognize();
+            plate_recognizer->LoadANN(pr_models_dir+"/ann.xml");
+            plate_recognizer->LoadSVM(pr_models_dir+"/svm.xml");
+            plate_recognizer->setLifemode(true);
+            plate_recognizer->setDebug(false);
+            tbStatus->append("plate recognizer initialized");
+
             int gpu_id = this->leGPU->displayText().toInt();
             assert(gpu_id>=0);
 
-            QString current_dir = QDir::currentPath();
-            std::string models_dir = current_dir.replace(current_dir.length()-3, 3, "models").toStdString();
+            std::string models_dir = QString(root_dir+"/models").toStdString();
             // tbStatus->append(models_dir.c_str());
             std::map<std::string, ClfParameter> params;
 
@@ -224,6 +251,13 @@ void VehicleDetectorWindow::on_pbInit_clicked() {
                     models_dir+"/model/model_labels.txt",
                     gpu_id);
             init(params);
+
+            std::string det_def = models_dir+"/detector/deploy.prototxt";
+            std::string det_weights = models_dir+"/detector/detector.caffemodel";
+            std::string bing_model = models_dir+"/bing";
+            detector = new FRCNN(det_def.c_str(), det_weights.c_str(), bing_model.c_str(), 0.5, 0.3, 500, 3);
+            // detector->set_gpu(gpu_id);
+            tbStatus->append("detector initialized");
 
             this->pbOpen->setEnabled(true);
             // this->pbRun->setEnabled(true);
@@ -248,5 +282,6 @@ void VehicleDetectorWindow::on_pbInit_clicked() {
 void VehicleDetectorWindow::show_image(const QModelIndex &index) {
     /* delete all previous images */
     this->scene->clear();
-    this->scene->addPixmap(QPixmap(this->image_list.at(index.row())));
+    QGraphicsPixmapItem* p = this->scene->addPixmap(QPixmap(this->image_list.at(index.row())));
+    gvImage->fitInView( this->scene->sceneRect(), Qt::KeepAspectRatio );
 }

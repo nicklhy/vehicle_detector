@@ -1,4 +1,5 @@
 #include "fast_rcnn_test.h"
+#include <stdio.h>
 
 void FRCNN::printDict(PyObject* obj) {
     if (!PyDict_Check(obj))
@@ -13,9 +14,18 @@ void FRCNN::printDict(PyObject* obj) {
     }
 }
 
-FRCNN::FRCNN(const char *prototxt, const char *weights, float _threshold, int _bing_size, int _class_id) : bing(2, 8, 2) {
+void FRCNN::set_gpu(int dev_id) {
+    char cmd_str[100];
+    sprintf(cmd_str, "caffe.set_device(%d)", dev_id);
+
+    PyRun_SimpleString("caffe.set_mode_gpu()");
+    PyRun_SimpleString(cmd_str);
+}
+
+FRCNN::FRCNN(const char *prototxt, const char *weights, const char *bing_model, float _conf_threshold, float _nms_thoreshold, int _bing_size, int _class_id) : bing(2, 8, 2) {
     bing_size = _bing_size;
-    threshold = _threshold;
+    conf_threshold = _conf_threshold;
+    nms_threshold = _nms_thoreshold;
     class_id = _class_id;
     assert(class_id>=0);
 
@@ -25,7 +35,7 @@ FRCNN::FRCNN(const char *prototxt, const char *weights, float _threshold, int _b
     init_numpy();
 
     /* path need to modify */
-    bing.loadTrainedModel("/media/G/lhy/VOCdevkit/VOC2007/Results/ObjNessB2W8MAXBGR");
+    bing.loadTrainedModel(bing_model);
 
     /* init converter */
     converter = new NDArrayConverter();
@@ -33,16 +43,24 @@ FRCNN::FRCNN(const char *prototxt, const char *weights, float _threshold, int _b
     PyRun_SimpleString("import sys");
     PyRun_SimpleString("sys.path.append('../third-parties/caffe/python')");
     PyRun_SimpleString("sys.path.append('../third-parties/fast-rcnn')");
+    PyRun_SimpleString("import caffe");
 
     PyObject* module_frcnn = PyImport_ImportModule("FRCNN");
     PyObject* module_dict_frcnn = PyModule_GetDict(module_frcnn);
     PyObject* class_frcnn = PyDict_GetItemString(module_dict_frcnn, "FRCNN");
 
+    fun_apply_nms = PyDict_GetItemString(module_dict_frcnn, "apply_nms");
+    assert(fun_apply_nms);
+
+    // PyObject* fun_create_net = PyDict_GetItemString(module_dict_frcnn, "create_net");
+
     PyObject *params_frcnn = Py_BuildValue("ss", prototxt, weights);
     assert(class_frcnn && PyCallable_Check(class_frcnn));
     instance_frcnn = PyObject_CallObject(class_frcnn, params_frcnn);
+    // net_ = PyObject_CallObject(fun_create_net, params_frcnn);
 
     fun_im_detect = PyObject_GetAttrString(instance_frcnn, "im_detect");
+    // fun_im_detect = PyDict_GetItemString(module_dict_frcnn, "im_detect");
     assert(fun_im_detect && PyCallable_Check(fun_im_detect));
 }
 
@@ -75,32 +93,39 @@ std::vector<std::pair<float, cv::Rect> > FRCNN::im_detect(const cv::Mat &img) {
     }
 
     /* detection */
+    // PyObject *params = Py_BuildValue("OOO", net_, converter->toNDArray(img), ValStructVec2Py(boxes).py_ptr());
     PyObject *params = Py_BuildValue("OO", converter->toNDArray(img), ValStructVec2Py(boxes).py_ptr());
     PyObject *det_res = PyObject_CallObject(fun_im_detect, params);
+    PyObject *nms_params = Py_BuildValue("Oiff", det_res, class_id, conf_threshold, nms_threshold);
+    assert(det_res);
+    det_res = PyObject_CallObject(fun_apply_nms, nms_params);
+    assert(det_res);
 
     /* extract detection results */
-    PyArg_ParseTuple(det_res, "OO", &py_scores, &py_dets);
-    numpy_boost<float, 2> scores(py_scores);
+    PyArg_ParseTuple(det_res, "OO", &py_dets, &py_scores);
     numpy_boost<float, 2> dets(py_dets);
+    numpy_boost<float, 1> scores(py_scores);
 
     const size_t *score_shape = scores.shape();
     const size_t *dets_shape = dets.shape();
-    assert(dets_shape[1]==4*score_shape[1]);
-    assert(class_id<score_shape[1]);
-    for(size_t i=0; i<score_shape[0]; ++i) {
-        float score = scores[i][class_id];
-        if(score<threshold) continue;
 
-        int x1 = (int)dets[i][class_id*4+0];
-        int y1 = (int)dets[i][class_id*4+1];
-        int x2 = (int)dets[i][class_id*4+2];
-        int y2 = (int)dets[i][class_id*4+3];
+    assert(dets_shape[1]==4 && dets_shape[0]==score_shape[0]);
+    // assert(class_id<score_shape[1]);
+
+    for(size_t i=0; i<score_shape[0]; ++i) {
+        float score = scores[i];
+        if(score<conf_threshold) continue;
+
+        int x1 = (int)dets[i][0];
+        int y1 = (int)dets[i][1];
+        int x2 = (int)dets[i][2];
+        int y2 = (int)dets[i][3];
 
         /* for debug */
-        float _x1 = dets[i][class_id*4+0];
-        float _y1 = dets[i][class_id*4+1];
-        float _x2 = dets[i][class_id*4+2];
-        float _y2 = dets[i][class_id*4+3];
+        // float _x1 = dets[i][0];
+        // float _y1 = dets[i][1];
+        // float _x2 = dets[i][2];
+        // float _y2 = dets[i][3];
 
         ans.push_back(pair<float, cv::Rect>(score, cv::Rect(x1, y1, x2-x1, y2-y1)));
     }

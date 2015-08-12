@@ -13,6 +13,10 @@
 #include "ui_mainwindow.h"
 #include "classifier.h"
 #include "easypr.h"
+#include "fast_rcnn_test.h"
+
+#define MIN_TAR_WIDTH   50
+#define MIN_TAR_HEIGHT  50
 
 class ClfParameter {
     public:
@@ -51,12 +55,13 @@ class VehicleDetectorWindow : public QWidget, public Ui::DetectorWindow {
         bool isReady;
         QString default_dir;
         std::map<std::string, Classifier> clf_map;
+        FRCNN *detector;
         std::vector<cv::Rect> rects;
         QStringList image_list;
         QStringListModel show_list;
         QStandardItemModel tv_item_model;
         QGraphicsScene *scene;
-        easypr::CPlateRecognize plate_recognizer;
+        easypr::CPlateRecognize *plate_recognizer;
 
     private slots:
         void on_pbOpen_clicked();

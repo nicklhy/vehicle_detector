@@ -48,6 +48,7 @@ int main(int argc, char *argv[])
     Mat img = imread("/home/lhy/Downloads/test.png");
     // resize(img, img, Size(500, 400));
     FRCNN frcnn("../models/detector/deploy.prototxt", "../models/detector/detector.caffemodel", 0.2, 500, 3);
+
     vector<pair<float, Rect> > dets = frcnn.im_detect(img);
 
     for(size_t i=0; i<dets.size(); ++i) {

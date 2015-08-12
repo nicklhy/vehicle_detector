@@ -42,10 +42,10 @@ set(GUI_SRC_LIST
     fast_rcnn_test.cpp
     classifier.cpp)
 
-set(TEST_SRC_LIST
-    test.cpp
-    fast_rcnn_test.cpp
-    conversion.cpp)
+# set(TEST_SRC_LIST
+    # test.cpp
+    # fast_rcnn_test.cpp
+    # conversion.cpp)
 
 # cmd_line tool
 add_executable(cmd_classifier ${CMD_SRC_LIST})
@@ -61,13 +61,13 @@ target_link_libraries(cmd_classifier ${OpenCV_LIBS}
     pthread)
 
 # test_app
-add_executable(test_app ${TEST_SRC_LIST})
-set_target_properties(test_app PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
-target_link_libraries(test_app ${OpenCV_LIBS}
-    boost_python
-    python2.7
-    bing
-    boost_system)
+# add_executable(test_app ${TEST_SRC_LIST})
+# set_target_properties(test_app PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
+# target_link_libraries(test_app ${OpenCV_LIBS}
+    # boost_python
+    # python2.7
+    # bing
+    # boost_system)
 
 
 # gui tool
