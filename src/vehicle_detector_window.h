@@ -14,6 +14,7 @@
 #include "classifier.h"
 #include "easypr.h"
 #include "fast_rcnn_test.h"
+#include "VehicleColorClassify.h"
 
 #define MIN_TAR_SCALE   0.1
 
@@ -53,14 +54,16 @@ class VehicleDetectorWindow : public QWidget, public Ui::DetectorWindow {
         int rank_num;
         bool isReady;
         QString default_dir;
-        std::map<std::string, Classifier> clf_map;
-        FRCNN *detector;
         std::vector<cv::Rect> rects;
         QStringList image_list;
         QStringListModel show_list;
         QStandardItemModel tv_item_model;
         QGraphicsScene *scene;
+
+        std::map<std::string, Classifier> clf_map;
+        FRCNN *detector;
         easypr::CPlateRecognize *plate_recognizer;
+        VehicleColorClassify *color_clf;
 
     private slots:
         void on_pbOpen_clicked();

@@ -135,7 +135,10 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
     for(int i=0; i<tv_item_model.rowCount(); ++i) {
         for(int j=0; j<tv_item_model.columnCount(); ++j) tv_item_model.setItem(i, j, new QStandardItem(""));
     }
+
     bool show_spliter = false;
+
+    /* pens for vehicle and plate */
     QPen pen1, pen2;
     pen1.setWidth(5);
     pen1.setColor(QColor(255, 0, 0));
@@ -143,8 +146,9 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
     pen2.setColor(QColor(0, 255, 0));
     QFont font = this->font();
     font.setPointSize(40);
+
+    /* detection */
     if(this->cbDetection->isChecked() && detector!=NULL) {
-        /* detect */
         std::vector<std::pair<float, cv::Rect> > dets = detector->im_detect(im);
         int cnt = 0;
         for(size_t i=0; i<dets.size(); ++i) {
@@ -167,6 +171,7 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
         cv::Rect rect = rects[i];
         cv::Mat car_img(im, rect);
 
+        /* type */
         if(this->cbType->isChecked() && this->clf_map.count("type")) {
             if(show_spliter)
                 tbStatus->append("------------------------------");
@@ -180,6 +185,20 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
             tv_item_model.setItem(i, 0, new QStandardItem(QString("%1").arg(type_str.c_str())));
             show_spliter = true;
         }
+        /* color */
+        if(this->cbColor->isChecked() && color_clf!=NULL) {
+            if(show_spliter)
+                tbStatus->append("------------------------------");
+            IplImage ipl_car_img = car_img;
+            clock_t t1 = clock();
+            int color_id = color_clf->OneImageVehicleColorClassify(&ipl_car_img, 0, 0, rect.width-1, rect.height-1);
+            clock_t t2 = clock();
+            tbStatus->append(QString("Color classification(%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
+            tbStatus->append(QString("Color: %1").arg(QString(VehicleColorClassify::color_map[color_id-1])));
+            tv_item_model.setItem(i, 1, new QStandardItem(QString("%1").arg(QString(VehicleColorClassify::color_map[color_id-1]))));
+            show_spliter = true;
+        }
+        /* make */
         if(this->cbMake->isChecked() && this->clf_map.count("make")) {
             if(show_spliter)
                 tbStatus->append("------------------------------");
@@ -193,6 +212,7 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
             tv_item_model.setItem(i, 2, new QStandardItem(QString("%1").arg(make_str.c_str())));
             show_spliter = true;
         }
+        /* model */
         if(this->cbModel->isChecked() && this->clf_map.count("model")) {
             if(show_spliter)
                 tbStatus->append("------------------------------");
@@ -206,6 +226,7 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
             tv_item_model.setItem(i, 3, new QStandardItem(QString("%1").arg(model_str.c_str())));
             show_spliter = true;
         }
+        /* plate */
         if(this->cbPlate->isChecked()) {
             if(show_spliter)
                 tbStatus->append("------------------------------");
@@ -307,6 +328,15 @@ void VehicleDetectorWindow::on_pbInit_clicked() {
             detector = new FRCNN(det_def.c_str(), det_weights.c_str(), bing_model.c_str(), 0.7, 0.3, 500, 3);
             // detector->set_gpu(gpu_id);
             tbStatus->append("detector initialized");
+
+            /* color classifier */
+            std::string color_model_dir = models_dir+"/color";
+            color_clf = new VehicleColorClassify(color_model_dir.c_str(),
+                    "car_color_detect.model",
+                    "topredictoneimage.txt",
+                    "topredictbatchimages.txt",
+                    "histogram.txt",
+                    "result.txt");
 
             this->pbOpen->setEnabled(true);
             // this->pbRun->setEnabled(true);

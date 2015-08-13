@@ -39,6 +39,9 @@ set(GUI_SRC_LIST
     vehicle_detector_qt.cpp
     vehicle_detector_window.cpp
     conversion.cpp
+    VehicleColorClassify.cpp
+    svm-predict.c
+    svm.cpp
     fast_rcnn_test.cpp
     classifier.cpp)
 
