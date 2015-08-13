@@ -28,6 +28,13 @@ VehicleDetectorWindow::VehicleDetectorWindow(QWidget *parent) : QWidget(parent),
 
     this->lvFileList->setEditTriggers(QAbstractItemView::NoEditTriggers);
 
+    this->cbDetection->setCheckState(Qt::Checked);
+    this->cbPlate->setCheckState(Qt::Checked);
+    this->cbColor->setCheckState(Qt::Checked);
+    this->cbType->setCheckState(Qt::Checked);
+    this->cbModel->setCheckState(Qt::Checked);
+    this->cbMake->setCheckState(Qt::Checked);
+
     detector = NULL;
     plate_recognizer = NULL;
 
@@ -129,9 +136,11 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
         for(int j=0; j<tv_item_model.columnCount(); ++j) tv_item_model.setItem(i, j, new QStandardItem(""));
     }
     bool show_spliter = false;
-    QPen pen;
-    pen.setWidth(3);
-    pen.setColor(QColor(255, 0, 0));
+    QPen pen1, pen2;
+    pen1.setWidth(5);
+    pen1.setColor(QColor(255, 0, 0));
+    pen2.setWidth(5);
+    pen2.setColor(QColor(0, 255, 0));
     QFont font = this->font();
     font.setPointSize(40);
     if(this->cbDetection->isChecked() && detector!=NULL) {
@@ -143,7 +152,7 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
             if(det.second.width*1.0/im.cols<MIN_TAR_SCALE || det.second.height*1.0/im.rows<MIN_TAR_SCALE) continue;
             rects.push_back(det.second);
             QRectF r(det.second.x, det.second.y, det.second.width, det.second.height);
-            QGraphicsRectItem *pr = this->scene->addRect(r, pen);
+            QGraphicsRectItem *pr = this->scene->addRect(r, pen1);
             QGraphicsTextItem *pt = this->scene->addText(QString("%1").arg(i+1), font);
             pt->setDefaultTextColor(QColor(0, 255, 0));
             pt->setPos(QPointF(det.second.x, det.second.y));
@@ -201,13 +210,53 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
             if(show_spliter)
                 tbStatus->append("------------------------------");
             std::vector<std::string> license;
+            std::vector<easypr::CPlate> plates;
             clock_t t1 = clock();
-            plate_recognizer->plateRecognize(car_img, license);
+            plate_recognizer->plateRecognize(car_img, license, plates);
             clock_t t2 = clock();
 
-            tv_item_model.setItem(i, 4, new QStandardItem(QString("%1").arg(license.size()>0?QString(license[0].c_str()) : "None")));
+            /* for debug */
+            // tbStatus->append(QString("%1").arg(license.size()));
+            // tbStatus->append(QString("%1").arg(plates.size()));
+            // for(size_t ind=0; ind<plates.size(); ++ind) {
+            // easypr::CPlate &plate = plates[ind];
+            // RotatedRect r = plate.getPlatePos();
+            // tbStatus->append(QString("%1").arg(r.angle));
+            // if(std::abs(r.angle-90) < 5 || std::abs(r.angle+90)<5) {
+            // r.size = cv::Size2f(r.size.height, r.size.width);
+            // }
+            // int x1 = r.center.x-r.size.width/2;
+            // int x2 = r.center.x+r.size.width/2;
+            // int y1 = r.center.y-r.size.height/2;
+            // int y2 = r.center.y+r.size.height/2;
+            // QGraphicsRectItem *pr = this->scene->addRect(QRectF(rects[i].x+x1, rects[i].y+y1, x2-x1, y2-y1), pen1);
+            // QGraphicsTextItem *pt = this->scene->addText(QString("%1").arg(license[ind].c_str()));
+            // pt->setDefaultTextColor(QColor(0, 0, 255));
+            // pt->setPos(QPointF(rects[i].x+x1, rects[i].y+y1));
+            // }
+
+            std::string lic = "";
+            RotatedRect pl;
+            for(size_t ind=0; ind<license.size(); ++ind) {
+                if(license[ind]!="") {
+                    lic = license[ind];
+                    pl = plates[ind].getPlatePos();
+                    break;
+                }
+            }
+            if(lic!="") {
+                if(std::abs(pl.angle-90) < 5 || std::abs(pl.angle+90)<5) {
+                    pl.size = cv::Size2f(pl.size.height, pl.size.width);
+                }
+                int x1 = pl.center.x-pl.size.width/2;
+                int x2 = pl.center.x+pl.size.width/2;
+                int y1 = pl.center.y-pl.size.height/2;
+                int y2 = pl.center.y+pl.size.height/2;
+                QGraphicsRectItem *pr = this->scene->addRect(QRectF(rects[i].x+x1, rects[i].y+y1, x2-x1, y2-y1), pen2);
+            }
+            tv_item_model.setItem(i, 4, new QStandardItem(QString("%1").arg(lic.size()>0?QString(lic.c_str()) : "None")));
             tbStatus->append(QString("Plate (%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
-            tbStatus->append(license.size()>0?QString(license[0].c_str()) : "None");
+            tbStatus->append(lic.size()>0?QString(lic.c_str()) : "None");
         }
     }
     tbStatus->append("******************************");
@@ -284,4 +333,5 @@ void VehicleDetectorWindow::show_image(const QModelIndex &index) {
     this->scene->clear();
     QGraphicsPixmapItem* p = this->scene->addPixmap(QPixmap(this->image_list.at(index.row())));
     gvImage->fitInView( this->scene->sceneRect(), Qt::KeepAspectRatio );
+    gvImage->show();
 }
