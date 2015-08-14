@@ -149,7 +149,9 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
 
     /* detection */
     if(this->cbDetection->isChecked() && detector!=NULL) {
+        clock_t t1 = clock();
         std::vector<std::pair<float, cv::Rect> > dets = detector->im_detect(im);
+        clock_t t2 = clock();
         int cnt = 0;
         for(size_t i=0; i<dets.size(); ++i) {
             std::pair<float, cv::Rect> &det = dets[i];
@@ -162,7 +164,7 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
             pt->setPos(QPointF(det.second.x, det.second.y));
             cnt++;
         }
-        tbStatus->append(QString("Find %1 targets").arg(cnt));
+        tbStatus->append(QString("Find %1 targets(%2 ms)").arg(cnt).arg(1000.0*(t2-t1)/CLOCKS_PER_SEC));
     }
     else rects.push_back(cv::Rect(0, 0, im.cols, im.rows));
 

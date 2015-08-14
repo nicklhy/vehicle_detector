@@ -1,4 +1,5 @@
 #include "fast_rcnn_test.h"
+#include <time.h>
 #include <stdio.h>
 
 void FRCNN::printDict(PyObject* obj) {
@@ -82,7 +83,9 @@ std::vector<std::pair<float, cv::Rect> > FRCNN::im_detect(const cv::Mat &img) {
     }
     else
         scaled_img = img;
+    // clock_t t1 = clock();
     bing.getObjBndBoxes(scaled_img, boxes);
+    // clock_t t2 = clock();
     if(scale_factor!=1.0) {
         for(int i=0; i<boxes.size(); ++i) {
             boxes[i][0] = (int)(boxes[i][0]/scale_factor);
@@ -100,6 +103,10 @@ std::vector<std::pair<float, cv::Rect> > FRCNN::im_detect(const cv::Mat &img) {
     assert(det_res);
     det_res = PyObject_CallObject(fun_apply_nms, nms_params);
     assert(det_res);
+    // clock_t t3 = clock();
+
+    // printf("bing: %f ms\n", 1000.0*(t2-t1)/CLOCKS_PER_SEC);
+    // printf("frcnn: %f ms\n", 1000.0*(t3-t2)/CLOCKS_PER_SEC);
 
     /* extract detection results */
     PyArg_ParseTuple(det_res, "OO", &py_dets, &py_scores);
