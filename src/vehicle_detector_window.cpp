@@ -5,6 +5,7 @@
 #include <QMessageBox>
 #include <QGraphicsRectItem>
 #include <QPixmap>
+#include <QImage>
 #include <QStringList>
 #include <QStringListModel>
 #include <QDir>
@@ -13,11 +14,31 @@
 #include <QDialog>
 #include <QFileDialog>
 
+QImage Mat2QImage(cv::Mat const& src) {
+    cv::Mat temp; // make the same cv::Mat
+    cvtColor(src, temp,CV_BGR2RGB); // cvtColor Makes a copt, that what i need
+    QImage dest((const uchar *) temp.data, temp.cols, temp.rows, temp.step, QImage::Format_RGB888);
+    dest.bits();
+    // of QImage::QImage ( const uchar * data, int width, int height, Format format )
+    return dest;
+}
+
+cv::Mat QImage2Mat(QImage const& src) {
+    cv::Mat tmp(src.height(),src.width(),CV_8UC3,(uchar*)src.bits(),src.bytesPerLine());
+    cv::Mat result;
+    cvtColor(tmp, result,CV_BGR2RGB);
+    return result;
+}
+
 VehicleDetectorWindow::VehicleDetectorWindow(QWidget *parent) : QWidget(parent), show_list(this), default_dir(QDir::homePath()) {
     this->setupUi(this);
 
-    this->scene = new QGraphicsScene(this->gvImage);
-    this->gvImage->setScene(this->scene);
+    this->scene_image = new QGraphicsScene(this->gvImage);
+    this->gvImage->setScene(this->scene_image);
+    this->scene_vehicle = new QGraphicsScene(this->gvVehicle);
+    this->gvVehicle->setScene(this->scene_vehicle);
+    this->scene_plate = new QGraphicsScene(this->gvPlate);
+    this->gvPlate->setScene(this->scene_plate);
 
     this->rank_num = 5;
     this->isReady = false;
@@ -61,7 +82,7 @@ VehicleDetectorWindow::VehicleDetectorWindow(QWidget *parent) : QWidget(parent),
 }
 
 VehicleDetectorWindow::~VehicleDetectorWindow() {
-    if(scene) delete scene;
+    if(scene_image) delete scene_image;
     if(detector) delete detector;
     if(plate_recognizer) delete plate_recognizer;
     release();
@@ -131,6 +152,8 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
 
     tbStatus->append("*********** Result ***********");
     rects.clear();
+    q_plates.clear();
+    q_vehicles.clear();
     /* clear all the previous results */
     for(int i=0; i<tv_item_model.rowCount(); ++i) {
         for(int j=0; j<tv_item_model.columnCount(); ++j) tv_item_model.setItem(i, j, new QStandardItem(""));
@@ -158,8 +181,8 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
             if(det.second.width*1.0/im.cols<MIN_TAR_SCALE || det.second.height*1.0/im.rows<MIN_TAR_SCALE) continue;
             rects.push_back(det.second);
             QRectF r(det.second.x, det.second.y, det.second.width, det.second.height);
-            QGraphicsRectItem *pr = this->scene->addRect(r, pen1);
-            QGraphicsTextItem *pt = this->scene->addText(QString("%1").arg(i+1), font);
+            QGraphicsRectItem *pr = this->scene_image->addRect(r, pen1);
+            QGraphicsTextItem *pt = this->scene_image->addText(QString("%1").arg(i+1), font);
             pt->setDefaultTextColor(QColor(0, 255, 0));
             pt->setPos(QPointF(det.second.x, det.second.y));
             cnt++;
@@ -172,6 +195,8 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
     for(size_t i=0; i<rects.size(); ++i) {
         cv::Rect rect = rects[i];
         cv::Mat car_img(im, rect);
+
+        q_vehicles[i] = Mat2QImage(car_img);
 
         /* type */
         if(this->cbType->isChecked() && this->clf_map.count("type")) {
@@ -252,8 +277,8 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
             // int x2 = r.center.x+r.size.width/2;
             // int y1 = r.center.y-r.size.height/2;
             // int y2 = r.center.y+r.size.height/2;
-            // QGraphicsRectItem *pr = this->scene->addRect(QRectF(rects[i].x+x1, rects[i].y+y1, x2-x1, y2-y1), pen1);
-            // QGraphicsTextItem *pt = this->scene->addText(QString("%1").arg(license[ind].c_str()));
+            // QGraphicsRectItem *pr = this->scene_image->addRect(QRectF(rects[i].x+x1, rects[i].y+y1, x2-x1, y2-y1), pen1);
+            // QGraphicsTextItem *pt = this->scene_image->addText(QString("%1").arg(license[ind].c_str()));
             // pt->setDefaultTextColor(QColor(0, 0, 255));
             // pt->setPos(QPointF(rects[i].x+x1, rects[i].y+y1));
             // }
@@ -275,13 +300,15 @@ void VehicleDetectorWindow::on_pbRun_clicked() {
                 int x2 = pl.center.x+pl.size.width/2;
                 int y1 = pl.center.y-pl.size.height/2;
                 int y2 = pl.center.y+pl.size.height/2;
-                QGraphicsRectItem *pr = this->scene->addRect(QRectF(rects[i].x+x1, rects[i].y+y1, x2-x1, y2-y1), pen2);
+                q_plates[i] = Mat2QImage(car_img(cv::Rect(x1, y1, x2-x1, y2-y1)));
+                QGraphicsRectItem *pr = this->scene_image->addRect(QRectF(rects[i].x+x1, rects[i].y+y1, x2-x1, y2-y1), pen2);
             }
             tv_item_model.setItem(i, 4, new QStandardItem(QString("%1").arg(lic.size()>0?QString(lic.c_str()) : "None")));
             tbStatus->append(QString("Plate (%1 ms):").arg((t2-t1)*1000.0/CLOCKS_PER_SEC));
             tbStatus->append(lic.size()>0?QString(lic.c_str()) : "None");
         }
     }
+    show_vehicle_and_plate();
     tbStatus->append("******************************");
 }
 
@@ -362,8 +389,40 @@ void VehicleDetectorWindow::on_pbInit_clicked() {
 
 void VehicleDetectorWindow::show_image(const QModelIndex &index) {
     /* delete all previous images */
-    this->scene->clear();
-    QGraphicsPixmapItem* p = this->scene->addPixmap(QPixmap(this->image_list.at(index.row())));
-    gvImage->fitInView( this->scene->sceneRect(), Qt::KeepAspectRatio );
+    this->scene_image->clear();
+    ptr_image = this->scene_image->addPixmap(QPixmap(this->image_list.at(index.row())));
+    gvImage->fitInView(this->scene_image->sceneRect(), Qt::KeepAspectRatio);
     gvImage->show();
 }
+
+void VehicleDetectorWindow::show_vehicle_and_plate(const int i) {
+    scene_plate->clear();
+    scene_vehicle->clear();
+
+    if(q_vehicles.count(i)>0) {
+        QGraphicsPixmapItem *p_vehicle = scene_vehicle->addPixmap(QPixmap::fromImage(q_vehicles[i]));
+        gvVehicle->fitInView(scene_vehicle->sceneRect(), Qt::KeepAspectRatio);
+    }
+    if(q_plates.count(i)>0) {
+        QGraphicsPixmapItem *p_plate = scene_plate->addPixmap(QPixmap::fromImage(q_plates[i]));
+        gvPlate->fitInView(scene_plate->sceneRect(), Qt::KeepAspectRatio);
+    }
+}
+
+#if 0
+void VehicleDetectorWindow::mouseReleaseEvent(QMouseEvent *event) {
+    tbStatus->append(QString("mouse release at x=%1, y=%2").arg(event->x()).arg(event->y()));
+    if(scene_image==NULL || event->button()!=Qt::LeftButton) return;
+    int x_gv=gvImage->x(), y_gv=gvImage->y(), w_gv=gvImage->width(), h_gv=gvImage->height();
+    if(event->x()<=x_gv || event->x()>=x_gv+w_gv || event->y()<=y_gv || event->y()>=y_gv+h_gv) return;
+
+    QPointF ps = ptr_image->mapFromScene(gvImage->mapToScene(event->x()-x_gv, event->y()-y_gv));
+
+    for(int i=0; i<rects.size(); ++i) {
+        if(ps.x()>rects[i].x && ps.y()>rects[i].y && ps.x()<rects[i].x+rects[i].width && ps.y()<rects[i].y+rects[i].height) {
+            show_vehicle_and_plate(i);
+            break;
+        }
+    }
+}
+#endif
