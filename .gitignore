@@ -1,7 +1,6 @@
 build/*
 data/*
 bin/*
-models/color
 cache/*
 third-parties/*
 *.caffemodel
