@@ -6,7 +6,6 @@ third-parties/*
 *.caffemodel
 *.pkl
 *.solverstate
-*.model
 *.png
 *.jpg
 *.pyc
